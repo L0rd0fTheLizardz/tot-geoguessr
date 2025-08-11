@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Outlast Trials GeoGuessr - Placeholder</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: white;
+      text-align: center;
+      margin: 0;
+      padding: 0;
+    }
+    #gameContainer {
+      max-width: 900px;
+      margin: auto;
+      padding: 10px;
+    }
+    .mapImage, .screenshotImage {
+      max-width: 100%;
+      height: auto;
+      border: 2px solid white;
+      margin-top: 10px;
+      cursor: crosshair;
+      position: relative;
+    }
+    #floorButtons button {
+      margin: 5px;
+      padding: 5px 10px;
+      background: #333;
+      color: white;
+      border: 1px solid white;
+      cursor: pointer;
+    }
+    #floorButtons button:hover {
+      background: #555;
+    }
+    .marker {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .guess-marker {
+      background: red;
+    }
+    .actual-marker {
+      background: lime;
+    }
+    canvas {
+      display: block;
+      margin: auto;
+      border: 2px solid white;
+      cursor: crosshair;
+    }
+    #mapSelect {
+      font-size: 16px;
+      padding: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div id="gameContainer">
+    <h1>Outlast Trials GeoGuessr (Prototype)</h1>
+    <div id="mapSelectionScreen">
+      <p>Select a map to start:</p>
+      <select id="mapSelect"></select>
+      <button onclick="startGame()">Start Game</button>
+    </div>
+
+    <div id="gameScreen" style="display:none;">
+      <p id="roundInfo"></p>
+      <img id="screenshot" class="screenshotImage" src="" alt="Screenshot">
+      <div id="floorButtons"></div>
+      <canvas id="mapCanvas"></canvas>
+      <p id="feedback"></p>
+      <button id="nextRoundBtn" style="display:none;" onclick="nextRound()">Next Round</button>
+    </div>
+
+    <div id="resultsScreen" style="display:none;">
+      <h2>Game Over!</h2>
+      <p id="finalScore"></p>
+      <button onclick="location.reload()">Play Again</button>
+    </div>
+  </div>
+
+  <script>
+    const mapData = [
+      {
+        name: "Map 1 - Police Station",
+        floors: [
+          { img: "https://via.placeholder.com/800x500/3333FF/FFFFFF?text=Police+F1", width: 800, height: 500 },
+          { img: "https://via.placeholder.com/600x600/3333AA/FFFFFF?text=Police+F2", width: 600, height: 600 }
+        ]
+      },
+      {
+        name: "Map 2 - Orphanage",
+        floors: [
+          { img: "https://via.placeholder.com/700x400/FF3333/FFFFFF?text=Orphanage+F1", width: 700, height: 400 }
+        ]
+      },
+      {
+        name: "Map 3 - Fun Park",
+        floors: [
+          { img: "https://via.placeholder.com/900x500/33FF33/000000?text=Fun+Park+F1", width: 900, height: 500 },
+          { img: "https://via.placeholder.com/900x500/11AA11/FFFFFF?text=Fun+Park+F2", width: 900, height: 500 }
+        ]
+      }
+    ];
+
+    const screenshots = [
+      { img: "https://via.placeholder.com/400x200/999999/FFFFFF?text=Shot1", mapIndex: 0, floorIndex: 0, x: 300, y: 200 },
+      { img: "https://via.placeholder.com/400x200/AAAAAA/FFFFFF?text=Shot2", mapIndex: 0, floorIndex: 1, x: 250, y: 400 },
+      { img: "https://via.placeholder.com/400x200/BBBBBB/FFFFFF?text=Shot3", mapIndex: 1, floorIndex: 0, x: 500, y: 300 },
+      { img: "https://via.placeholder.com/400x200/CCCCCC/FFFFFF?text=Shot4", mapIndex: 2, floorIndex: 0, x: 700, y: 400 },
+      { img: "https://via.placeholder.com/400x200/DDDDDD/FFFFFF?text=Shot5", mapIndex: 2, floorIndex: 1, x: 450, y: 200 }
+    ];
+
+    let selectedMapIndex = 0;
+    let currentRound = 0;
+    let score = 0;
+    let roundScreens = [];
+
+    const totalRounds = 5;
+    const mapSelectEl = document.getElementById("mapSelect");
+    const mapCanvas = document.getElementById("mapCanvas");
+    const ctx = mapCanvas.getContext("2d");
+
+    mapData.forEach((map, idx) => {
+      const opt = document.createElement("option");
+      opt.value = idx;
+      opt.textContent = map.name;
+      mapSelectEl.appendChild(opt);
+    });
+
+    function startGame() {
+      selectedMapIndex = parseInt(mapSelectEl.value);
+      roundScreens = [];
+      for (let i = 0; i < totalRounds; i++) {
+        roundScreens.push(screenshots[Math.floor(Math.random() * screenshots.length)]);
+      }
+      currentRound = 0;
+      score = 0;
+      document.getElementById("mapSelectionScreen").style.display = "none";
+      document.getElementById("gameScreen").style.display = "block";
+      loadRound();
+    }
+
+    function loadRound() {
+      const shot = roundScreens[currentRound];
+      document.getElementById("roundInfo").textContent = `Round ${currentRound + 1} of ${totalRounds}`;
+      document.getElementById("screenshot").src = shot.img;
+      const floorBtnContainer = document.getElementById("floorButtons");
+      floorBtnContainer.innerHTML = "";
+      mapData[selectedMapIndex].floors.forEach((floor, fIdx) => {
+        const btn = document.createElement("button");
+        btn.textContent = `Floor ${fIdx + 1}`;
+        btn.onclick = () => loadMapFloor(fIdx);
+        floorBtnContainer.appendChild(btn);
+      });
+      loadMapFloor(0);
+      document.getElementById("feedback").textContent = "";
+      document.getElementById("nextRoundBtn").style.display = "none";
+    }
+
+    let currentFloorView = 0;
+
+    function loadMapFloor(floorIdx) {
+      currentFloorView = floorIdx;
+      const floorData = mapData[selectedMapIndex].floors[floorIdx];
+      mapCanvas.width = floorData.width;
+      mapCanvas.height = floorData.height;
+      const img = new Image();
+      img.onload = () => {
+        ctx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
+        ctx.drawImage(img, 0, 0, mapCanvas.width, mapCanvas.height);
+      };
+      img.src = floorData.img;
+      mapCanvas.onclick = handleGuess;
+    }
+
+    function handleGuess(evt) {
+      const rect = mapCanvas.getBoundingClientRect();
+      const x = Math.round(evt.clientX - rect.left);
+      const y = Math.round(evt.clientY - rect.top);
+      const shot = roundScreens[currentRound];
+      const correctMap = (selectedMapIndex === shot.mapIndex);
+      const correctFloor = (currentFloorView === shot.floorIndex);
+      let points = 0;
+      if (!correctMap) {
+        points = 0;
+      } else {
+        const dx = x - shot.x;
+        const dy = y - shot.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const maxDist = Math.max(mapData[shot.mapIndex].floors[shot.floorIndex].width,
+                                 mapData[shot.mapIndex].floors[shot.floorIndex].height);
+        if (!correctFloor) {
+          const proximity = Math.max(0, 1 - (dist / maxDist));
+          points = Math.round(proximity * 2500);
+        } else {
+          const proximity = Math.max(0, 1 - (dist / maxDist));
+          points = 2000 + Math.round(proximity * 3000);
+        }
+      }
+      score += points;
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = "red";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(shot.x, shot.y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = "lime";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(shot.x, shot.y);
+      ctx.strokeStyle = "yellow";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      document.getElementById("feedback").textContent = `Points this round: ${points}`;
+      document.getElementById("nextRoundBtn").style.display = "inline-block";
+      mapCanvas.onclick = null;
+    }
+
+    function nextRound() {
+      currentRound++;
+      if (currentRound >= totalRounds) {
+        endGame();
+      } else {
+        loadRound();
+      }
+    }
+
+    function endGame() {
+      document.getElementById("gameScreen").style.display = "none";
+      document.getElementById("resultsScreen").style.display = "block";
+      document.getElementById("finalScore").textContent = `Final Score: ${score}`;
+    }
+  </script>
+</body>
+</html>
