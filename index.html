@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Outlast Trials GeoGuessr - Prototype (v2)</title>
+  <title>Outlast Trials GeoGuessr – Prototype (v3)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root{
@@ -47,7 +47,7 @@
     #mapCanvas{
       width:100%;
       height:auto;
-      min-height:260px;
+      min-height:280px;
       border-radius:14px;
       border:2px solid var(--border);
       background:#0c0f14;
@@ -66,11 +66,7 @@
     .btn.primary{background:linear-gradient(90deg,var(--accent),var(--accent2));border:none;color:#07121a}
     .btn.ghost{background:transparent}
     .btn.small{padding:8px 12px;font-size:14px}
-    .grid{
-      display:grid;
-      grid-template-columns:repeat(3,1fr);
-      gap:10px;
-    }
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
     .mapbtn{
       padding:14px 10px;
       border-radius:12px;
@@ -82,7 +78,7 @@
       min-height:56px;
       cursor:pointer;
     }
-    .mapbtn:hover{filter:brightness(1.08)}
+    .mapbtn.active{outline:2px solid var(--accent)}
     .scorebox{font-size:22px;font-weight:800}
     .hint{color:var(--muted);font-size:14px}
     .flex-between{display:flex;justify-content:space-between;align-items:center;gap:12px}
@@ -97,6 +93,10 @@
       font-size:15px;
       color:var(--muted);
     }
+    .legend{display:flex;align-items:center;gap:14px;font-size:14px;color:var(--muted)}
+    .dot{width:12px;height:12px;border-radius:999px;display:inline-block}
+    .dot.red{background:#ff5858}
+    .dot.green{background:#38ef7d}
   </style>
 </head>
 <body>
@@ -113,12 +113,14 @@
           <img id="screenshot" class="screenshot" src="" alt="screenshot">
 
           <div class="callout mt12">
-            <b>How to play:</b> Look at the screenshot → pick the map you think it’s from. If you’re right, choose the correct floor and tap the exact location on the floor plan. Scoring: wrong map = 0; right map + wrong floor = up to 2,500; right floor = at least 2,000, up to 5,000 the closer you are.
+            <b>How to play:</b> Look at the screenshot → select a <b>map</b> (no scoring yet). You’ll see that map’s floor plan and floor buttons. Pick the floor and tap your guess on the map. <br>
+            <b>Scoring:</b> wrong map = 0; right map + wrong floor = up to 2,500; right floor = min 2,000, up to 5,000 the closer you are.
           </div>
 
-          <div id="mapGuessArea" class="mt16">
-            <div class="label">Guess the map</div>
-            <div id="mapGuessButtons" class="grid"></div>
+          <div id="mapSelectArea" class="mt16">
+            <div class="label">Select a map</div>
+            <div id="mapButtons" class="grid"></div>
+            <div class="hint mt8">Tap a map. You can change floors before placing your guess. Want to pick a different map? Tap a different one.</div>
           </div>
 
           <div id="floorArea" class="mt16 hidden">
@@ -136,6 +138,10 @@
         <div class="col">
           <div class="label">Map</div>
           <canvas id="mapCanvas"></canvas>
+          <div class="legend mt8">
+            <span><span class="dot red"></span> Your guess</span>
+            <span><span class="dot green"></span> Correct location</span>
+          </div>
         </div>
       </div>
     </div>
@@ -148,69 +154,85 @@
   </div>
 
   <script>
-    // ---------- Placeholder MAPS (9 maps, varying sizes/floors) ----------
+    // ============================
+    // SETTINGS (easy to customize)
+    // ============================
+    const SETTINGS = {
+      totalRounds: 5,
+    };
+
+    // ===================================
+    // ASSETS & MAP DATA (edit this first)
+    // - Replace names, floor names, images, sizes to match your maps
+    // - Add/remove floors by editing the "floors" array
+    // ===================================
     const mapData = [
       { name: "Map 1 – Police Station", floors:[
-        {img:"https://via.placeholder.com/800x500/3333FF/FFFFFF?text=Police+F1", width:800, height:500},
-        {img:"https://via.placeholder.com/600x600/3333AA/FFFFFF?text=Police+F2", width:600, height:600},
+        {name:"First Floor",  img:"https://via.placeholder.com/800x500/3333FF/FFFFFF?text=Police+F1", width:800, height:500},
+        {name:"Second Floor", img:"https://via.placeholder.com/600x600/3333AA/FFFFFF?text=Police+F2", width:600, height:600},
       ]},
       { name: "Map 2 – Orphanage", floors:[
-        {img:"https://via.placeholder.com/700x420/FF3333/FFFFFF?text=Orphanage+F1", width:700, height:420},
+        {name:"Ground", img:"https://via.placeholder.com/700x420/FF3333/FFFFFF?text=Orphanage+F1", width:700, height:420},
       ]},
       { name: "Map 3 – Fun Park", floors:[
-        {img:"https://via.placeholder.com/920x520/33FF33/000000?text=Fun+Park+F1", width:920, height:520},
-        {img:"https://via.placeholder.com/920x520/11AA11/FFFFFF?text=Fun+Park+F2", width:920, height:520},
+        {name:"Upper", img:"https://via.placeholder.com/920x520/33FF33/000000?text=Fun+Park+F1", width:920, height:520},
+        {name:"Lower", img:"https://via.placeholder.com/920x520/11AA11/FFFFFF?text=Fun+Park+F2", width:920, height:520},
       ]},
       { name: "Map 4 – Courthouse", floors:[
-        {img:"https://via.placeholder.com/780x480/915EFF/FFFFFF?text=Courthouse+F1", width:780, height:480},
-        {img:"https://via.placeholder.com/640x520/6A38FF/FFFFFF?text=Courthouse+F2", width:640, height:520},
+        {name:"F1", img:"https://via.placeholder.com/780x480/915EFF/FFFFFF?text=Courthouse+F1", width:780, height:480},
+        {name:"F2", img:"https://via.placeholder.com/640x520/6A38FF/FFFFFF?text=Courthouse+F2", width:640, height:520},
       ]},
       { name: "Map 5 – Toy Factory", floors:[
-        {img:"https://via.placeholder.com/880x520/FFC83A/111111?text=Toy+Factory+F1", width:880, height:520}
+        {name:"Main", img:"https://via.placeholder.com/880x520/FFC83A/111111?text=Toy+Factory+F1", width:880, height:520}
       ]},
       { name: "Map 6 – Docks", floors:[
-        {img:"https://via.placeholder.com/820x460/2CD3E1/111111?text=Docks+F1", width:820, height:460},
-        {img:"https://via.placeholder.com/680x560/2B9FB2/FFFFFF?text=Docks+F2", width:680, height:560}
+        {name:"F1", img:"https://via.placeholder.com/820x460/2CD3E1/111111?text=Docks+F1", width:820, height:460},
+        {name:"F2", img:"https://via.placeholder.com/680x560/2B9FB2/FFFFFF?text=Docks+F2", width:680, height:560}
       ]},
       { name: "Map 7 – Downtown", floors:[
-        {img:"https://via.placeholder.com/900x540/FF6B6B/111111?text=Downtown+F1", width:900, height:540}
+        {name:"Street", img:"https://via.placeholder.com/900x540/FF6B6B/111111?text=Downtown+F1", width:900, height:540}
       ]},
       { name: "Map 8 – Suburbs", floors:[
-        {img:"https://via.placeholder.com/740x500/7DD3FC/111111?text=Suburbs+F1", width:740, height:500},
-        {img:"https://via.placeholder.com/740x500/38BDF8/111111?text=Suburbs+F2", width:740, height:500}
+        {name:"F1", img:"https://via.placeholder.com/740x500/7DD3FC/111111?text=Suburbs+F1", width:740, height:500},
+        {name:"F2", img:"https://via.placeholder.com/740x500/38BDF8/111111?text=Suburbs+F2", width:740, height:500}
       ]},
       { name: "Map 9 – Shopping Mall", floors:[
-        {img:"https://via.placeholder.com/860x520/F59E0B/111111?text=Mall+F1", width:860, height:520},
-        {img:"https://via.placeholder.com/820x520/D97706/FFFFFF?text=Mall+F2", width:820, height:520},
-        {img:"https://via.placeholder.com/780x520/B45309/FFFFFF?text=Mall+F3", width:780, height:520}
+        {name:"Floor A", img:"https://via.placeholder.com/860x520/F59E0B/111111?text=Mall+F1", width:860, height:520},
+        {name:"Floor B", img:"https://via.placeholder.com/820x520/D97706/FFFFFF?text=Mall+F2", width:820, height:520},
+        {name:"Basement", img:"https://via.placeholder.com/780x520/B45309/FFFFFF?text=Mall+F3", width:780, height:520}
       ]},
     ];
 
-    // ---------- Placeholder screenshots with ground truth (spread over some maps) ----------
+    // Placeholder screenshots with ground truth
+    // Replace with your own images and coordinates per map/floor
     const screenshots = [
-      { img:"https://via.placeholder.com/600x300/999/fff?text=Shot+1", mapIndex:0, floorIndex:0, x:300, y:210 },
-      { img:"https://via.placeholder.com/600x300/aaa/fff?text=Shot+2", mapIndex:0, floorIndex:1, x:250, y:420 },
-      { img:"https://via.placeholder.com/600x300/bbb/fff?text=Shot+3", mapIndex:1, floorIndex:0, x:520, y:300 },
-      { img:"https://via.placeholder.com/600x300/ccc/fff?text=Shot+4", mapIndex:2, floorIndex:0, x:760, y:460 },
-      { img:"https://via.placeholder.com/600x300/dddddd/111?text=Shot+5", mapIndex:2, floorIndex:1, x:450, y:220 },
-      { img:"https://via.placeholder.com/600x300/556/fff?text=Shot+6", mapIndex:3, floorIndex:0, x:540, y:360 },
-      { img:"https://via.placeholder.com/600x300/775/fff?text=Shot+7", mapIndex:3, floorIndex:1, x:300, y:300 },
-      { img:"https://via.placeholder.com/600x300/eab308/111?text=Shot+8", mapIndex:4, floorIndex:0, x:640, y:300 },
-      { img:"https://via.placeholder.com/600x300/2cd3e1/111?text=Shot+9", mapIndex:5, floorIndex:0, x:460, y:220 },
-      { img:"https://via.placeholder.com/600x300/2b9fb2/fff?text=Shot+10", mapIndex:5, floorIndex:1, x:360, y:480 },
+      { img:"https://via.placeholder.com/600x300/999/fff?text=Shot+1",  mapIndex:0, floorIndex:0, x:300, y:210 },
+      { img:"https://via.placeholder.com/600x300/aaa/fff?text=Shot+2",  mapIndex:0, floorIndex:1, x:250, y:420 },
+      { img:"https://via.placeholder.com/600x300/bbb/fff?text=Shot+3",  mapIndex:1, floorIndex:0, x:520, y:300 },
+      { img:"https://via.placeholder.com/600x300/ccc/fff?text=Shot+4",  mapIndex:2, floorIndex:0, x:760, y:460 },
+      { img:"https://via.placeholder.com/600x300/dddddd/111?text=Shot+5",mapIndex:2, floorIndex:1, x:450, y:220 },
+      { img:"https://via.placeholder.com/600x300/556/fff?text=Shot+6",  mapIndex:3, floorIndex:0, x:540, y:360 },
+      { img:"https://via.placeholder.com/600x300/775/fff?text=Shot+7",  mapIndex:3, floorIndex:1, x:300, y:300 },
+      { img:"https://via.placeholder.com/600x300/eab308/111?text=Shot+8",mapIndex:4, floorIndex:0, x:640, y:300 },
+      { img:"https://via.placeholder.com/600x300/2cd3e1/111?text=Shot+9",mapIndex:5, floorIndex:0, x:460, y:220 },
+      { img:"https://via.placeholder.com/600x300/2b9fb2/fff?text=Shot+10",mapIndex:5, floorIndex:1, x:360, y:480 },
     ];
 
-    const totalRounds = 5;
+    // ===================
+    // GAME STATE
+    // ===================
     let round = 0;
     let totalScore = 0;
     let currentShot = null;
+    let selectedMapIdx = null;     // player's selected map for this round
+    let selectedFloorIdx = 0;      // floor they're viewing before click
 
-    // Elements
+    // ELEMENTS
     const screenshotEl = document.getElementById('screenshot');
     const mapCanvas = document.getElementById('mapCanvas');
     const ctx = mapCanvas.getContext('2d');
-    const mapGuessArea = document.getElementById('mapGuessArea');
-    const mapGuessButtons = document.getElementById('mapGuessButtons');
+    const mapButtons = document.getElementById('mapButtons');
+    const mapSelectArea = document.getElementById('mapSelectArea');
     const floorArea = document.getElementById('floorArea');
     const floorButtons = document.getElementById('floorButtons');
     const feedback = document.getElementById('feedback');
@@ -221,79 +243,86 @@
     const finalPanel = document.getElementById('finalPanel');
     const finalScoreEl = document.getElementById('finalScore');
 
-    roundTotal.textContent = totalRounds;
+    roundTotal.textContent = SETTINGS.totalRounds;
 
-    let stage = 'mapGuess';
-    let currentMapViewIndex = null;
-    let currentFloorView = 0;
-
+    // ============== INIT ROUND ==============
     function startRound(){
-      stage = 'mapGuess';
       feedback.textContent = '';
       nextBtn.classList.add('hidden');
       floorArea.classList.add('hidden');
-      mapGuessArea.classList.remove('hidden');
+      mapSelectArea.classList.remove('hidden');
+      selectedMapIdx = null;
+      selectedFloorIdx = 0;
 
+      // new random shot
       currentShot = screenshots[Math.floor(Math.random()*screenshots.length)];
       screenshotEl.src = currentShot.img;
 
-      mapGuessButtons.innerHTML = '';
+      // build map selection
+      buildMapButtons();
+
+      // reset canvas to a neutral first map just so it's not empty
+      const def = mapData[0].floors[0];
+      setCanvasSize(def.width, def.height);
+      drawImage(def.img);
+
+      roundNum.textContent = (round+1);
+      totalScoreEl.textContent = totalScore;
+
+      // allow map click to place later
+      mapCanvas.onclick = null;
+    }
+
+    function buildMapButtons(){
+      mapButtons.innerHTML = '';
       mapData.forEach((m, idx)=>{
         const b = document.createElement('button');
         b.className = 'mapbtn';
         b.textContent = m.name;
-        b.onclick = ()=>handleMapGuess(idx);
-        mapGuessButtons.appendChild(b);
+        b.onclick = ()=>selectMap(idx, b);
+        mapButtons.appendChild(b);
       });
-
-      const defaultMap = mapData[0].floors[0];
-      mapCanvas.width = defaultMap.width;
-      mapCanvas.height = defaultMap.height;
-      drawImageToCanvas(defaultMap.img);
-      roundNum.textContent = (round+1);
-      totalScoreEl.textContent = totalScore;
     }
 
-    function handleMapGuess(guessedMapIdx){
-      const correct = (guessedMapIdx === currentShot.mapIndex);
-      if(!correct){
-        feedback.innerHTML = `<span style="color:var(--bad);font-weight:800">Wrong map – 0 points.</span> It was <b>${mapData[currentShot.mapIndex].name}</b>.`;
-        totalScoreEl.textContent = totalScore;
-        showMapAndReveal(currentShot.mapIndex, currentShot.floorIndex);
-        mapGuessArea.classList.add('hidden');
-        nextBtn.classList.remove('hidden');
-      }else{
-        feedback.innerHTML = `<span style="color:var(--good);font-weight:800">Correct map!</span> Now pick the floor and tap the location.`;
-        stage = 'locationGuess';
-        currentMapViewIndex = guessedMapIdx;
-        mapGuessArea.classList.add('hidden');
-        floorArea.classList.remove('hidden');
-        buildFloorButtons(currentMapViewIndex);
-        loadMapFloor(currentMapViewIndex, 0);
-        mapCanvas.onclick = handleLocationClick;
-      }
+    function selectMap(idx, btn){
+      selectedMapIdx = idx;
+      // visual active state
+      [...mapButtons.children].forEach(ch=>ch.classList.remove('active'));
+      btn.classList.add('active');
+
+      // show floor area + buttons
+      floorArea.classList.remove('hidden');
+      buildFloorButtons(selectedMapIdx);
+      selectedFloorIdx = 0;
+      loadMapFloor(selectedMapIdx, selectedFloorIdx);
+
+      // allow clicking map to place guess
+      mapCanvas.onclick = handleGuessClick;
+      feedback.textContent = 'Tap the map to place your guess.';
     }
 
     function buildFloorButtons(mapIdx){
       floorButtons.innerHTML = '';
       mapData[mapIdx].floors.forEach((f, i)=>{
-        const btn = document.createElement('button');
-        btn.className = 'btn small ghost';
-        btn.textContent = `Floor ${i+1}`;
-        btn.onclick = ()=>loadMapFloor(mapIdx, i);
-        floorButtons.appendChild(btn);
+        const fb = document.createElement('button');
+        fb.className = 'btn small ghost';
+        fb.textContent = f.name; // uses customizable floor name
+        fb.onclick = ()=>{ selectedFloorIdx = i; loadMapFloor(mapIdx, i); };
+        floorButtons.appendChild(fb);
       });
     }
 
     function loadMapFloor(mapIdx, floorIdx){
-      currentFloorView = floorIdx;
       const floor = mapData[mapIdx].floors[floorIdx];
-      mapCanvas.width = floor.width;
-      mapCanvas.height = floor.height;
-      drawImageToCanvas(floor.img);
+      setCanvasSize(floor.width, floor.height);
+      drawImage(floor.img);
     }
 
-    function drawImageToCanvas(src){
+    function setCanvasSize(w,h){
+      mapCanvas.width = w;
+      mapCanvas.height = h;
+    }
+    function drawImage(src){
       const img = new Image();
       img.onload = ()=>{
         ctx.clearRect(0,0,mapCanvas.width,mapCanvas.height);
@@ -302,37 +331,64 @@
       img.src = src;
     }
 
-    function handleLocationClick(evt){
-      if(stage!=='locationGuess') return;
+    // ============== GUESS HANDLING ==============
+    function handleGuessClick(evt){
+      if(selectedMapIdx === null) return; // should not happen
       const rect = mapCanvas.getBoundingClientRect();
       const x = Math.round(evt.clientX - rect.left);
       const y = Math.round(evt.clientY - rect.top);
 
-      const correctFloor = (currentFloorView === currentShot.floorIndex);
-      const floorData = mapData[currentShot.mapIndex].floors[currentShot.floorIndex];
-      const dx = x - currentShot.x;
-      const dy = y - currentShot.y;
-      const dist = Math.sqrt(dx*dx + dy*dy);
-      const maxDist = Math.max(floorData.width, floorData.height);
+      // determine map correctness
+      const correctMap = (selectedMapIdx === currentShot.mapIndex);
+      const correctFloor = (selectedFloorIdx === currentShot.floorIndex);
+
       let points = 0;
-      if(!correctFloor){
-        const proximity = Math.max(0, 1 - (dist / maxDist));
-        points = Math.round(proximity * 2500);
+      if(!correctMap){
+        // wrong map -> 0 and reveal correct
+        points = 0;
+        feedback.innerHTML = `<span style="color:var(--bad);font-weight:800">Wrong map – 0 points.</span> It was <b>${mapData[currentShot.mapIndex].name}</b>.`;
+        revealCorrectOnly();
       }else{
-        const proximity = Math.max(0, 1 - (dist / maxDist));
-        points = 2000 + Math.round(proximity * 3000);
+        // right map
+        const floorData = mapData[currentShot.mapIndex].floors[currentShot.floorIndex];
+        const dx = x - currentShot.x;
+        const dy = y - currentShot.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const maxDist = Math.max(floorData.width, floorData.height);
+        if(!correctFloor){
+          const proximity = Math.max(0, 1 - (dist / maxDist));
+          points = Math.round(proximity * 2500);
+          feedback.innerHTML = `Right map, <b>wrong floor</b> – points: <b>${points}</b> (max 2500).`;
+          revealCorrectOnly(); // show only the correct marker on the correct floor
+        }else{
+          const proximity = Math.max(0, 1 - (dist / maxDist));
+          points = 2000 + Math.round(proximity * 3000);
+          feedback.innerHTML = `Right map & floor – points: <b>${points}</b>.`;
+          // draw guess + correct + line on the correct floor
+          loadMapFloor(currentShot.mapIndex, currentShot.floorIndex);
+          setTimeout(()=>{
+            drawMarker(x,y,'#ff5858'); // guess
+            drawMarker(currentShot.x, currentShot.y, '#38ef7d'); // correct
+            drawLine(x,y,currentShot.x, currentShot.y, 'yellow');
+          }, 100);
+        }
       }
+
       totalScore += points;
-
-      drawMarker(x,y,'red');
-      drawMarker(currentShot.x, currentShot.y, 'lime');
-      drawLine(x,y,currentShot.x, currentShot.y, 'yellow');
-
-      feedback.innerHTML = `Points this round: <b>${points}</b> • ${correctFloor ? 'Correct floor' : 'Wrong floor (max 2500)'} `;
       totalScoreEl.textContent = totalScore;
-
-      mapCanvas.onclick = null;
+      mapCanvas.onclick = null; // lock for this round
       nextBtn.classList.remove('hidden');
+      // Hide map selection/floor controls to avoid confusion until next round
+      // (optional: keep floor buttons visible so user sees the correct floor name)
+    }
+
+    // Reveal only the correct location (no guess dot, no line).
+    function revealCorrectOnly(){
+      // show correct floor of correct map
+      loadMapFloor(currentShot.mapIndex, currentShot.floorIndex);
+      setTimeout(()=>{
+        drawMarker(currentShot.x, currentShot.y, '#38ef7d'); // only correct
+      }, 100);
     }
 
     function drawMarker(x,y,color){
@@ -350,17 +406,10 @@
       ctx.stroke();
     }
 
-    function showMapAndReveal(mapIdx, floorIdx){
-      buildFloorButtons(mapIdx);
-      loadMapFloor(mapIdx, floorIdx);
-      setTimeout(()=>{
-        drawMarker(currentShot.x, currentShot.y, 'lime');
-      }, 120);
-    }
-
-    nextBtn.addEventListener('click', ()=>{
+    // ============== ROUND / END ==============
+    document.getElementById('nextBtn').addEventListener('click', ()=>{
       round++;
-      if(round >= totalRounds){
+      if(round >= SETTINGS.totalRounds){
         endGame();
       }else{
         startRound();
