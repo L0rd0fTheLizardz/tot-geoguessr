@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Outlast Trials GeoGuessr - Prototype (v2)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#0e1117;
+      --panel:#141922;
+      --text:#f3f6fb;
+      --muted:#a7b0bf;
+      --accent:#6ee7ff;
+      --accent2:#8b5cf6;
+      --good:#34d399;
+      --bad:#f87171;
+      --warn:#fbbf24;
+      --border:#283042;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Inter,Roboto,Helvetica,Arial,sans-serif;
+      background:linear-gradient(180deg,#0e1117 0%,#0a0c11 100%);
+      color:var(--text);
+    }
+    .wrap{max-width:1100px;margin:0 auto;padding:18px}
+    header{padding:10px 0 14px; text-align:center}
+    h1{margin:0 0 10px;font-size:28px;font-weight:800;letter-spacing:.2px}
+    .sub{color:var(--muted);font-size:15px}
+    .panel{
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:18px;
+      padding:18px;
+      box-shadow:0 14px 36px rgba(0,0,0,.35);
+    }
+    .row{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start}
+    .col{flex:1 1 360px}
+    .label{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px}
+    .screenshot{
+      width:100%;
+      border-radius:14px;
+      border:2px solid var(--border);
+      display:block;
+    }
+    #mapCanvas{
+      width:100%;
+      height:auto;
+      min-height:260px;
+      border-radius:14px;
+      border:2px solid var(--border);
+      background:#0c0f14;
+    }
+    .btn{
+      border:1px solid var(--border);
+      background:#192233;
+      color:var(--text);
+      padding:12px 16px;
+      border-radius:12px;
+      cursor:pointer;
+      font-weight:700;
+      font-size:16px;
+    }
+    .btn:hover{filter:brightness(1.1)}
+    .btn.primary{background:linear-gradient(90deg,var(--accent),var(--accent2));border:none;color:#07121a}
+    .btn.ghost{background:transparent}
+    .btn.small{padding:8px 12px;font-size:14px}
+    .grid{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:10px;
+    }
+    .mapbtn{
+      padding:14px 10px;
+      border-radius:12px;
+      border:1px solid var(--border);
+      background:#141b2a;
+      color:var(--text);
+      text-align:center;
+      font-weight:700;
+      min-height:56px;
+      cursor:pointer;
+    }
+    .mapbtn:hover{filter:brightness(1.08)}
+    .scorebox{font-size:22px;font-weight:800}
+    .hint{color:var(--muted);font-size:14px}
+    .flex-between{display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .center{text-align:center}
+    .mt8{margin-top:8px}.mt12{margin-top:12px}.mt16{margin-top:16px}.mt20{margin-top:20px}.mt24{margin-top:24px}.mt32{margin-top:32px}
+    .hidden{display:none !important}
+    .callout{
+      background:#0f1420;
+      border:1px dashed var(--border);
+      border-radius:12px;
+      padding:12px;
+      font-size:15px;
+      color:var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Outlast Trials GeoGuessr – Prototype</h1>
+      <div class="sub">Round <span id="roundNum">1</span>/<span id="roundTotal">5</span> • Total Score: <span class="scorebox" id="totalScore">0</span></div>
+    </header>
+
+    <div class="panel">
+      <div class="row">
+        <div class="col">
+          <div class="label">Screenshot</div>
+          <img id="screenshot" class="screenshot" src="" alt="screenshot">
+
+          <div class="callout mt12">
+            <b>How to play:</b> Look at the screenshot → pick the map you think it’s from. If you’re right, choose the correct floor and tap the exact location on the floor plan. Scoring: wrong map = 0; right map + wrong floor = up to 2,500; right floor = at least 2,000, up to 5,000 the closer you are.
+          </div>
+
+          <div id="mapGuessArea" class="mt16">
+            <div class="label">Guess the map</div>
+            <div id="mapGuessButtons" class="grid"></div>
+          </div>
+
+          <div id="floorArea" class="mt16 hidden">
+            <div class="label">Floors</div>
+            <div id="floorButtons"></div>
+            <div class="hint mt8">Switch floors if needed, then tap the map to place your guess.</div>
+          </div>
+
+          <div id="feedback" class="mt20" style="font-size:18px;"></div>
+          <div class="mt16">
+            <button id="nextBtn" class="btn primary hidden">Next Round</button>
+          </div>
+        </div>
+
+        <div class="col">
+          <div class="label">Map</div>
+          <canvas id="mapCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel mt16 center hidden" id="finalPanel">
+      <h2 style="margin:0 0 8px">Game Over</h2>
+      <p>Your total score: <span class="scorebox" id="finalScore">0</span></p>
+      <button class="btn" onclick="restart()">Play Again</button>
+    </div>
+  </div>
+
+  <script>
+    // ---------- Placeholder MAPS (9 maps, varying sizes/floors) ----------
+    const mapData = [
+      { name: "Map 1 – Police Station", floors:[
+        {img:"https://via.placeholder.com/800x500/3333FF/FFFFFF?text=Police+F1", width:800, height:500},
+        {img:"https://via.placeholder.com/600x600/3333AA/FFFFFF?text=Police+F2", width:600, height:600},
+      ]},
+      { name: "Map 2 – Orphanage", floors:[
+        {img:"https://via.placeholder.com/700x420/FF3333/FFFFFF?text=Orphanage+F1", width:700, height:420},
+      ]},
+      { name: "Map 3 – Fun Park", floors:[
+        {img:"https://via.placeholder.com/920x520/33FF33/000000?text=Fun+Park+F1", width:920, height:520},
+        {img:"https://via.placeholder.com/920x520/11AA11/FFFFFF?text=Fun+Park+F2", width:920, height:520},
+      ]},
+      { name: "Map 4 – Courthouse", floors:[
+        {img:"https://via.placeholder.com/780x480/915EFF/FFFFFF?text=Courthouse+F1", width:780, height:480},
+        {img:"https://via.placeholder.com/640x520/6A38FF/FFFFFF?text=Courthouse+F2", width:640, height:520},
+      ]},
+      { name: "Map 5 – Toy Factory", floors:[
+        {img:"https://via.placeholder.com/880x520/FFC83A/111111?text=Toy+Factory+F1", width:880, height:520}
+      ]},
+      { name: "Map 6 – Docks", floors:[
+        {img:"https://via.placeholder.com/820x460/2CD3E1/111111?text=Docks+F1", width:820, height:460},
+        {img:"https://via.placeholder.com/680x560/2B9FB2/FFFFFF?text=Docks+F2", width:680, height:560}
+      ]},
+      { name: "Map 7 – Downtown", floors:[
+        {img:"https://via.placeholder.com/900x540/FF6B6B/111111?text=Downtown+F1", width:900, height:540}
+      ]},
+      { name: "Map 8 – Suburbs", floors:[
+        {img:"https://via.placeholder.com/740x500/7DD3FC/111111?text=Suburbs+F1", width:740, height:500},
+        {img:"https://via.placeholder.com/740x500/38BDF8/111111?text=Suburbs+F2", width:740, height:500}
+      ]},
+      { name: "Map 9 – Shopping Mall", floors:[
+        {img:"https://via.placeholder.com/860x520/F59E0B/111111?text=Mall+F1", width:860, height:520},
+        {img:"https://via.placeholder.com/820x520/D97706/FFFFFF?text=Mall+F2", width:820, height:520},
+        {img:"https://via.placeholder.com/780x520/B45309/FFFFFF?text=Mall+F3", width:780, height:520}
+      ]},
+    ];
+
+    // ---------- Placeholder screenshots with ground truth (spread over some maps) ----------
+    const screenshots = [
+      { img:"https://via.placeholder.com/600x300/999/fff?text=Shot+1", mapIndex:0, floorIndex:0, x:300, y:210 },
+      { img:"https://via.placeholder.com/600x300/aaa/fff?text=Shot+2", mapIndex:0, floorIndex:1, x:250, y:420 },
+      { img:"https://via.placeholder.com/600x300/bbb/fff?text=Shot+3", mapIndex:1, floorIndex:0, x:520, y:300 },
+      { img:"https://via.placeholder.com/600x300/ccc/fff?text=Shot+4", mapIndex:2, floorIndex:0, x:760, y:460 },
+      { img:"https://via.placeholder.com/600x300/dddddd/111?text=Shot+5", mapIndex:2, floorIndex:1, x:450, y:220 },
+      { img:"https://via.placeholder.com/600x300/556/fff?text=Shot+6", mapIndex:3, floorIndex:0, x:540, y:360 },
+      { img:"https://via.placeholder.com/600x300/775/fff?text=Shot+7", mapIndex:3, floorIndex:1, x:300, y:300 },
+      { img:"https://via.placeholder.com/600x300/eab308/111?text=Shot+8", mapIndex:4, floorIndex:0, x:640, y:300 },
+      { img:"https://via.placeholder.com/600x300/2cd3e1/111?text=Shot+9", mapIndex:5, floorIndex:0, x:460, y:220 },
+      { img:"https://via.placeholder.com/600x300/2b9fb2/fff?text=Shot+10", mapIndex:5, floorIndex:1, x:360, y:480 },
+    ];
+
+    const totalRounds = 5;
+    let round = 0;
+    let totalScore = 0;
+    let currentShot = null;
+
+    // Elements
+    const screenshotEl = document.getElementById('screenshot');
+    const mapCanvas = document.getElementById('mapCanvas');
+    const ctx = mapCanvas.getContext('2d');
+    const mapGuessArea = document.getElementById('mapGuessArea');
+    const mapGuessButtons = document.getElementById('mapGuessButtons');
+    const floorArea = document.getElementById('floorArea');
+    const floorButtons = document.getElementById('floorButtons');
+    const feedback = document.getElementById('feedback');
+    const nextBtn = document.getElementById('nextBtn');
+    const roundNum = document.getElementById('roundNum');
+    const roundTotal = document.getElementById('roundTotal');
+    const totalScoreEl = document.getElementById('totalScore');
+    const finalPanel = document.getElementById('finalPanel');
+    const finalScoreEl = document.getElementById('finalScore');
+
+    roundTotal.textContent = totalRounds;
+
+    let stage = 'mapGuess';
+    let currentMapViewIndex = null;
+    let currentFloorView = 0;
+
+    function startRound(){
+      stage = 'mapGuess';
+      feedback.textContent = '';
+      nextBtn.classList.add('hidden');
+      floorArea.classList.add('hidden');
+      mapGuessArea.classList.remove('hidden');
+
+      currentShot = screenshots[Math.floor(Math.random()*screenshots.length)];
+      screenshotEl.src = currentShot.img;
+
+      mapGuessButtons.innerHTML = '';
+      mapData.forEach((m, idx)=>{
+        const b = document.createElement('button');
+        b.className = 'mapbtn';
+        b.textContent = m.name;
+        b.onclick = ()=>handleMapGuess(idx);
+        mapGuessButtons.appendChild(b);
+      });
+
+      const defaultMap = mapData[0].floors[0];
+      mapCanvas.width = defaultMap.width;
+      mapCanvas.height = defaultMap.height;
+      drawImageToCanvas(defaultMap.img);
+      roundNum.textContent = (round+1);
+      totalScoreEl.textContent = totalScore;
+    }
+
+    function handleMapGuess(guessedMapIdx){
+      const correct = (guessedMapIdx === currentShot.mapIndex);
+      if(!correct){
+        feedback.innerHTML = `<span style="color:var(--bad);font-weight:800">Wrong map – 0 points.</span> It was <b>${mapData[currentShot.mapIndex].name}</b>.`;
+        totalScoreEl.textContent = totalScore;
+        showMapAndReveal(currentShot.mapIndex, currentShot.floorIndex);
+        mapGuessArea.classList.add('hidden');
+        nextBtn.classList.remove('hidden');
+      }else{
+        feedback.innerHTML = `<span style="color:var(--good);font-weight:800">Correct map!</span> Now pick the floor and tap the location.`;
+        stage = 'locationGuess';
+        currentMapViewIndex = guessedMapIdx;
+        mapGuessArea.classList.add('hidden');
+        floorArea.classList.remove('hidden');
+        buildFloorButtons(currentMapViewIndex);
+        loadMapFloor(currentMapViewIndex, 0);
+        mapCanvas.onclick = handleLocationClick;
+      }
+    }
+
+    function buildFloorButtons(mapIdx){
+      floorButtons.innerHTML = '';
+      mapData[mapIdx].floors.forEach((f, i)=>{
+        const btn = document.createElement('button');
+        btn.className = 'btn small ghost';
+        btn.textContent = `Floor ${i+1}`;
+        btn.onclick = ()=>loadMapFloor(mapIdx, i);
+        floorButtons.appendChild(btn);
+      });
+    }
+
+    function loadMapFloor(mapIdx, floorIdx){
+      currentFloorView = floorIdx;
+      const floor = mapData[mapIdx].floors[floorIdx];
+      mapCanvas.width = floor.width;
+      mapCanvas.height = floor.height;
+      drawImageToCanvas(floor.img);
+    }
+
+    function drawImageToCanvas(src){
+      const img = new Image();
+      img.onload = ()=>{
+        ctx.clearRect(0,0,mapCanvas.width,mapCanvas.height);
+        ctx.drawImage(img, 0,0, mapCanvas.width, mapCanvas.height);
+      };
+      img.src = src;
+    }
+
+    function handleLocationClick(evt){
+      if(stage!=='locationGuess') return;
+      const rect = mapCanvas.getBoundingClientRect();
+      const x = Math.round(evt.clientX - rect.left);
+      const y = Math.round(evt.clientY - rect.top);
+
+      const correctFloor = (currentFloorView === currentShot.floorIndex);
+      const floorData = mapData[currentShot.mapIndex].floors[currentShot.floorIndex];
+      const dx = x - currentShot.x;
+      const dy = y - currentShot.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      const maxDist = Math.max(floorData.width, floorData.height);
+      let points = 0;
+      if(!correctFloor){
+        const proximity = Math.max(0, 1 - (dist / maxDist));
+        points = Math.round(proximity * 2500);
+      }else{
+        const proximity = Math.max(0, 1 - (dist / maxDist));
+        points = 2000 + Math.round(proximity * 3000);
+      }
+      totalScore += points;
+
+      drawMarker(x,y,'red');
+      drawMarker(currentShot.x, currentShot.y, 'lime');
+      drawLine(x,y,currentShot.x, currentShot.y, 'yellow');
+
+      feedback.innerHTML = `Points this round: <b>${points}</b> • ${correctFloor ? 'Correct floor' : 'Wrong floor (max 2500)'} `;
+      totalScoreEl.textContent = totalScore;
+
+      mapCanvas.onclick = null;
+      nextBtn.classList.remove('hidden');
+    }
+
+    function drawMarker(x,y,color){
+      ctx.beginPath();
+      ctx.arc(x, y, 7, 0, Math.PI*2);
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+    function drawLine(x1,y1,x2,y2,color){
+      ctx.beginPath();
+      ctx.moveTo(x1,y1);
+      ctx.lineTo(x2,y2);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+
+    function showMapAndReveal(mapIdx, floorIdx){
+      buildFloorButtons(mapIdx);
+      loadMapFloor(mapIdx, floorIdx);
+      setTimeout(()=>{
+        drawMarker(currentShot.x, currentShot.y, 'lime');
+      }, 120);
+    }
+
+    nextBtn.addEventListener('click', ()=>{
+      round++;
+      if(round >= totalRounds){
+        endGame();
+      }else{
+        startRound();
+      }
+    });
+
+    function endGame(){
+      document.querySelector('.panel').classList.add('hidden');
+      finalPanel.classList.remove('hidden');
+      finalScoreEl.textContent = totalScore;
+    }
+
+    function restart(){
+      round = 0;
+      totalScore = 0;
+      document.querySelector('.panel').classList.remove('hidden');
+      finalPanel.classList.add('hidden');
+      startRound();
+    }
+
+    // boot
+    startRound();
+  </script>
+</body>
+</html>
